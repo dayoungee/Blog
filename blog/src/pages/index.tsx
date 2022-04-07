@@ -1,4 +1,4 @@
-import React, { FunctionComponent } from 'react'
+import React, { FunctionComponent, useMemo } from 'react'
 import styled from '@emotion/styled'
 import GlobalStyle from 'components/Common/GlobalStyle'
 import Footer from 'components/Common/Footer'
@@ -6,11 +6,46 @@ import CategoryList from 'components/Main/CategoryList'
 import Introduction from 'components/Main/Introduction'
 import PostList, { PostType } from 'components/Main/PostList'
 import { graphql } from 'gatsby'
+import { IGatsbyImageData } from 'gatsby-plugin-image'
+import queryString, { ParsedQuery } from 'query-string'
+import Template from 'components/Common/Template'
+
+
+
+export type PostFrontmatterType = {
+  title: string
+  date: string
+  categories: string[]
+  summary: string
+  thumbnail: {
+    childImageSharp: {
+      gatsbyImageData: IGatsbyImageData
+    }
+  }
+}
+
+export type PostListItemType = {
+  node: {
+    id: string
+    fields: {
+      slug: string
+    }
+    frontmatter: PostFrontmatterType
+  }
+}
 
 type IndexPageProps = {
+  location: {
+    search: string
+  }
   data: {
     allMarkdownRemark: {
-      edges: PostType[]
+      edges: PostListItemType[]
+    }
+    file: {
+      childImageSharp: {
+        gatsbyImageData: IGatsbyImageData
+      }
     }
   }
 }
@@ -28,20 +63,56 @@ const Container = styled.div`
 `
 
 const IndexPage: FunctionComponent<IndexPageProps> = function ({
-    data: {
-      allMarkdownRemark: { edges },
+  location: { search },
+  data: {
+    allMarkdownRemark: { edges },
+    file: {
+      childImageSharp: { gatsbyImageData },
     },
-  }) {
-    return (
-      <Container>
-        <GlobalStyle />
-        <Introduction />
-        <CategoryList selectedCategory="Web" categoryList={CATEGORY_LIST} />
-        <PostList posts={edges} />
-        <Footer />
-      </Container>
-    )
-  }
+  },
+}) {
+  const parsed: ParsedQuery<string> = queryString.parse(search)
+  const selectedCategory: string =
+    typeof parsed.category !== 'string' || !parsed.category
+      ? 'All'
+      : parsed.category
+
+  const categoryList = useMemo(
+    () =>
+      edges.reduce(
+        (
+          list: CategoryListProps['categoryList'],
+          {
+            node: {
+              frontmatter: { categories },
+            },
+          }: PostType,
+        ) => {
+          categories.forEach(category => {
+            if (list[category] === undefined) list[category] = 1;
+            else list[category]++;
+          });
+
+          list['All']++;
+
+          return list;
+        },
+        { All: 0 },
+      ),
+    [],
+  )
+
+  return (
+    <Template>
+      <Introduction profileImage={gatsbyImageData} />
+      <CategoryList
+        selectedCategory={selectedCategory}
+        categoryList={categoryList}
+      />
+      <PostList selectedCategory={selectedCategory} posts={edges} />
+    </Template>
+  )
+}
 
 export default IndexPage
 
@@ -53,16 +124,26 @@ export const getPostList = graphql`
       edges {
         node {
           id
+          fields {
+            slug
+          }
           frontmatter {
             title
             summary
             date(formatString: "YYYY.MM.DD.")
             categories
             thumbnail {
-              publicURL
+              childImageSharp {
+                gatsbyImageData(width: 768, height: 400)
+              }
             }
           }
         }
+      }
+    }
+    file(name: { eq: "profile-image" }) {
+      childImageSharp {
+        gatsbyImageData(width: 120, height: 120)
       }
     }
   }
